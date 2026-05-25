@@ -1,0 +1,22 @@
+# ── Web framework ─────────────────────────────────────────────
+flask==3.1.0
+flask-cors==5.0.0
+
+# ── PostgreSQL / Supabase ─────────────────────────────────────
+psycopg2-binary==2.9.10
+python-dotenv==1.0.1
+
+# ── MongoDB (interacciones) ───────────────────────────────────
+pymongo==4.10.1
+dnspython==2.7.0          # requerido por pymongo para URIs SRV
+
+# ── Machine Learning (clustering + recomendación) ─────────────
+numpy==2.2.5
+pandas==2.2.3
+scikit-learn==1.6.1
+
+# ── Geolocalización por IP ────────────────────────────────────
+requests==2.32.3
+
+# ── Producción (Gunicorn para Railway/Render) ─────────────────
+gunicorn==23.0.0

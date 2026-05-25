@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CineMatch — Descubre tu próxima película</title>
+
+  <!-- Tabler Icons -->
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+
+  <!-- Estilos propios -->
+  <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     COLD START OVERLAY
+     Se muestra solo la primera vez que el usuario visita la app.
+     ═══════════════════════════════════════════════════════════ -->
+<div id="cold-start-overlay" style="display:none">
+  <div class="cold-start-box">
+
+    <h1>CINE<span>MATCH</span></h1>
+    <p>Dinos qué tipo de películas te gustan y te recomendamos
+       lo que vas a amar. Solo toma un minuto.</p>
+
+    <!-- Géneros -->
+    <h3>¿Qué géneros disfrutas? <span style="color:var(--red)">*</span></h3>
+    <div class="genre-grid" id="genre-grid">
+      <!-- Generado por app.js -->
+      <div class="loader"><span></span><span></span><span></span></div>
+    </div>
+
+    <!-- Películas populares para calificar -->
+    <h3 style="margin-bottom:8px">Califica algunas películas que conozcas
+      <span style="color:var(--muted);font-weight:300;text-transform:none;
+                   font-size:12px;letter-spacing:0">(opcional)</span>
+    </h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Pasa el cursor sobre la imagen y toca las estrellas
+    </p>
+    <div class="seed-movies-grid" id="seed-movies-grid">
+      <div class="loader"><span></span><span></span><span></span></div>
+    </div>
+
+    <button class="btn-primary" id="cold-start-submit" disabled>
+      Empezar →
+    </button>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     APP PRINCIPAL
+     ═══════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- ── NAVBAR ──────────────────────────────────────────────── -->
+  <nav class="navbar" role="navigation" aria-label="Navegación principal">
+
+    <a href="/" class="nav-logo" aria-label="CineMatch inicio">
+      CINE<span>MATCH</span>
+    </a>
+
+    <!-- Buscador con autocorrección -->
+    <div class="search-wrap" role="search">
+      <i class="ti ti-search search-icon" aria-hidden="true"></i>
+      <input
+        id="search-input"
+        type="search"
+        placeholder="Busca una película..."
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="Buscar películas"
+        aria-autocomplete="list"
+        aria-controls="search-results-dropdown"
+      >
+      <!-- Sugerencia de corrección ortográfica -->
+      <div class="search-correction" id="search-correction" role="status" aria-live="polite"></div>
+      <!-- Dropdown de resultados -->
+      <div class="search-results-dropdown" id="search-results-dropdown"
+           role="listbox" aria-label="Resultados de búsqueda"></div>
+    </div>
+
+  </nav>
+
+  <!-- ── MAIN ────────────────────────────────────────────────── -->
+  <main role="main">
+
+    <!-- Sección Home -->
+    <section id="section-home" class="section" aria-label="Inicio">
+      <div id="carousels-container">
+        <!-- Loader inicial -->
+        <div class="loader" style="padding:80px 0">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+</div><!-- /#app -->
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODAL DE PELÍCULA
+     ═══════════════════════════════════════════════════════════ -->
+<div id="movie-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal-box">
+
+    <!-- Imagen de fondo -->
+    <img id="modal-backdrop" src="" alt="" class="modal-backdrop">
+
+    <!-- Botón cerrar -->
+    <button class="modal-close" id="modal-close-btn" aria-label="Cerrar">
+      <i class="ti ti-x" aria-hidden="true"></i>
+    </button>
+
+    <div class="modal-body">
+
+      <!-- Poster -->
+      <div class="modal-poster">
+        <img id="modal-poster-img" src="" alt="Poster de la película">
+      </div>
+
+      <!-- Info -->
+      <div class="modal-info">
+        <h2 class="modal-title" id="modal-title">—</h2>
+        <p  class="modal-meta"  id="modal-meta"></p>
+
+        <!-- Géneros -->
+        <div class="modal-genres" id="modal-genres"></div>
+
+        <!-- Sinopsis -->
+        <p class="modal-synopsis" id="modal-synopsis"></p>
+
+        <!-- Explicación del algoritmo (caja blanca) -->
+        <div class="modal-explanation" id="modal-explanation" style="display:none">
+          <i class="ti ti-bulb" aria-hidden="true"></i>
+          <span id="modal-explanation-text"></span>
+        </div>
+
+        <!-- Calificación con estrellas -->
+        <div id="modal-star-container"></div>
+
+      </div>
+    </div><!-- /.modal-body -->
+  </div><!-- /.modal-box -->
+</div><!-- /#movie-modal -->
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     TOAST de notificaciones
+     ═══════════════════════════════════════════════════════════ -->
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCRIPTS
+     Orden importante: stars → search → app
+     ═══════════════════════════════════════════════════════════ -->
+<script src="/static/js/stars.js"></script>
+<script src="/static/js/search.js"></script>
+<script src="/static/js/app.js"></script>
+
+</body>
+</html>
