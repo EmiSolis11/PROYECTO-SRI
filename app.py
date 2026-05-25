@@ -54,8 +54,182 @@ def fit_model():
     try:
         _, fit_from_db, _, _ = _get_recommender_modules()
         fit_from_db(get_db())
-        return jsonify({"ok": True, "message": "Modelo entrenado."})
+        return jsonify({"ok": True, "message": "Modelo de contenido entrenado."})
     except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/retrain", methods=["POST"])
+def retrain_clusters():
+    """
+    Reentrena el modelo K-Means con los datos actuales de Supabase.
+    K = 5% del total de sesiones con taste_vector válido.
+
+    Uso:
+        POST /api/admin/retrain
+    """
+    import numpy as np
+    from sklearn.cluster import KMeans
+    from sklearn.preprocessing import normalize
+
+    GENRE_KEYS = [
+        "Action","Adventure","Animation","Biography","Comedy",
+        "Crime","Documentary","Drama","Family","Fantasy",
+        "Foreign","History","Horror","Music","Mystery",
+        "Romance","Sci-Fi","Sport","Thriller","War","Western"
+    ]
+
+    def array_to_tv(arr):
+        return {g: round(float(v),4) for g,v in zip(GENRE_KEYS,arr) if v>0.001}
+
+    db = get_db()
+    cur = db.cursor()
+    start = datetime.now(timezone.utc)
+
+    try:
+        # 1. Construir taste_vectors desde ratings para sesiones vacías
+        cur.execute("""
+            SELECT r.session_id, r.score, m.genres
+            FROM   ratings r JOIN movies m ON m.movie_id = r.movie_id
+        """)
+        rows = cur.fetchall()
+
+        genre_sums  = {}
+        score_totals = {}
+        for row in rows:
+            sid   = str(row["session_id"])
+            score = float(row["score"])
+            genres = row["genres"]
+            if isinstance(genres, str):
+                try:    genres = json.loads(genres)
+                except: genres = []
+            if sid not in genre_sums:
+                genre_sums[sid]   = {}
+                score_totals[sid] = 0.0
+            score_totals[sid] += score
+            for g in genres:
+                if g in GENRE_KEYS:
+                    genre_sums[sid][g] = genre_sums[sid].get(g, 0.0) + score
+
+        # Normalizar y guardar solo los vacíos
+        updated = 0
+        for sid, gs in genre_sums.items():
+            total = score_totals[sid]
+            if not total: continue
+            tv = {g: round(s/total,4) for g,s in gs.items() if s/total > 0.01}
+            if not tv: continue
+            cur.execute(
+                """UPDATE cookie_sessions SET taste_vector=%s::jsonb
+                   WHERE session_id=%s
+                   AND (taste_vector='{}'::jsonb OR taste_vector IS NULL)""",
+                (json.dumps(tv), sid)
+            )
+            updated += cur.rowcount
+        db.commit()
+
+        # 2. Leer todos los vectores válidos
+        cur.execute("""
+            SELECT session_id, taste_vector FROM cookie_sessions
+            WHERE taste_vector != '{}'::jsonb AND taste_vector IS NOT NULL
+        """)
+        tv_rows = cur.fetchall()
+
+        session_ids = []
+        vectors     = []
+        for row in tv_rows:
+            tv = row["taste_vector"]
+            if isinstance(tv, str):
+                try:    tv = json.loads(tv)
+                except: continue
+            vec = np.array([tv.get(g,0.0) for g in GENRE_KEYS], dtype=np.float32)
+            if vec.sum() == 0: continue
+            session_ids.append(str(row["session_id"]))
+            vectors.append(vec)
+
+        n = len(session_ids)
+        if n < 2:
+            return jsonify({"ok": False, "error": f"Solo {n} sesiones válidas, mínimo 2"}), 400
+
+        # 3. Calcular K = 5% de usuarios
+        k = max(2, min(50, round(n * 0.05)))
+        matrix      = np.vstack(vectors)
+        matrix_norm = normalize(matrix, norm="l2")
+
+        # 4. Entrenar K-Means
+        model = KMeans(n_clusters=k, init="k-means++", n_init=15,
+                       max_iter=500, random_state=42)
+        model.fit(matrix_norm)
+
+        # 5. Nueva versión
+        cur.execute("SELECT COALESCE(MAX(version),0)+1 AS v FROM clusters")
+        version = cur.fetchone()["v"]
+        cur.execute("UPDATE clusters SET is_active=FALSE")
+
+        labels        = model.labels_
+        member_counts = [int(np.sum(labels==i)) for i in range(k)]
+        cluster_id_map = {}
+
+        for i, centroid in enumerate(model.cluster_centers_):
+            cur.execute(
+                """INSERT INTO clusters
+                       (cluster_number,centroid_vector,member_count,version,is_active)
+                   VALUES (%s,%s::jsonb,%s,%s,TRUE) RETURNING cluster_id""",
+                (i, json.dumps(array_to_tv(centroid)), member_counts[i], version)
+            )
+            cluster_id_map[i] = cur.fetchone()["cluster_id"]
+        db.commit()
+
+        # 6. Reasignar sesiones
+        distances = np.linalg.norm(matrix_norm - model.cluster_centers_[labels], axis=1)
+        batch = [
+            (sid, cluster_id_map[int(lbl)], float(dist), version)
+            for sid, lbl, dist in zip(session_ids, labels, distances)
+        ]
+        for i in range(0, len(batch), 500):
+            cur.executemany(
+                """INSERT INTO session_cluster
+                       (session_id,cluster_id,distance_to_centroid,cluster_version)
+                   VALUES (%s,%s,%s,%s)
+                   ON CONFLICT (session_id) DO UPDATE SET
+                       cluster_id=EXCLUDED.cluster_id,
+                       distance_to_centroid=EXCLUDED.distance_to_centroid,
+                       cluster_version=EXCLUDED.cluster_version,
+                       assigned_at=NOW()""",
+                batch[i:i+500]
+            )
+        db.commit()
+
+        elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+
+        # Resumen de clusters
+        cur.execute("""
+            SELECT c.cluster_number, c.centroid_vector, c.member_count
+            FROM clusters c WHERE c.is_active=TRUE ORDER BY c.cluster_number
+        """)
+        cluster_summary = []
+        for row in cur.fetchall():
+            cv = row["centroid_vector"]
+            if isinstance(cv, str): cv = json.loads(cv)
+            top = sorted(cv.items(), key=lambda x: x[1], reverse=True)[:3]
+            cluster_summary.append({
+                "cluster": row["cluster_number"],
+                "members": row["member_count"],
+                "top_genres": [g for g,_ in top]
+            })
+
+        return jsonify({
+            "ok":              True,
+            "version":         version,
+            "sessions":        n,
+            "k":               k,
+            "k_formula":       f"5% de {n} usuarios",
+            "vectors_updated": updated,
+            "elapsed_s":       round(elapsed, 2),
+            "clusters":        cluster_summary,
+        })
+
+    except Exception as e:
+        db.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
 
 COOKIE_NAME     = "cm_session"
