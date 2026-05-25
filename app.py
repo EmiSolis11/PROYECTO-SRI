@@ -29,9 +29,12 @@ from dotenv import load_dotenv
 
 from db    import get_db, init_app as db_init_app, execute, query
 from mongo import log_event, get_session_profile, get_trending_by_country
-from recommender.clustering import assign_session, maybe_recalculate
-from recommender.content    import get_content_recommender, fit_from_db
-from recommender.hybrid     import HybridEngine
+# Librerías ML se importan lazy para no consumir RAM al arrancar
+def _get_recommender_modules():
+    from recommender.content  import get_content_recommender, fit_from_db
+    from recommender.hybrid   import HybridEngine
+    from recommender.clustering import assign_session
+    return get_content_recommender, fit_from_db, HybridEngine, assign_session
 
 load_dotenv()
 
@@ -45,14 +48,15 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-insecuro-cambiar")
 CORS(app, supports_credentials=True)   # permite cookies desde el frontend
 db_init_app(app)                       # registra close_db en teardown
 
-@app.before_request
-def load_content_model():
-    """Entrena el modelo de contenido la primera vez que llega un request."""
-    if not get_content_recommender().fitted:
-        try:
-            fit_from_db(get_db())
-        except Exception as e:
-            print(f"[content] Warning: {e}")
+@app.route("/api/admin/fit-model", methods=["POST"])
+def fit_model():
+    """Entrena el modelo de contenido bajo demanda. Llamar una vez tras el deploy."""
+    try:
+        _, fit_from_db, _, _ = _get_recommender_modules()
+        fit_from_db(get_db())
+        return jsonify({"ok": True, "message": "Modelo entrenado."})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 COOKIE_NAME     = "cm_session"
 COOKIE_MAX_AGE  = 365 * 24 * 3600     # 1 año en segundos
@@ -305,13 +309,10 @@ def save_cold_start():
         (json.dumps(taste_vector), sid)
     )
 
-    # Asignar al cluster más cercano (función SQL definida en schema)
+    # Asignar al cluster más cercano
     try:
-        cluster_result = query(
-            "SELECT assign_session_to_cluster(%s) AS cluster_id",
-            (sid,), one=True
-        )
-        cluster_id = cluster_result["cluster_id"] if cluster_result else None
+        _, _, _, assign_session = _get_recommender_modules()
+        cluster_id = assign_session(get_db(), sid)
     except Exception:
         cluster_id = None
 
@@ -653,6 +654,7 @@ def recommend():
     country = sess_row["country_code"] if sess_row else ""
 
     # Motor híbrido: clustering + contenido + boosting
+    get_content_recommender, _, HybridEngine, _ = _get_recommender_modules()
     engine = HybridEngine(get_db(), get_content_recommender())
     recs   = engine.recommend(sid, limit=limit, country_code=country)
 
