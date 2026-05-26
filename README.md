@@ -11,6 +11,10 @@
 <img src="https://github.com/user-attachments/assets/d8eb052b-91bc-4d37-bcb6-006e3e45bba9" alt="Descripción" width="250" />
 <img src="https://github.com/user-attachments/assets/2a268968-4761-4bdc-a92f-c9db1b91b99c" alt="Descripción" width="250" />
 
+Aplicación en producción: https://proyecto-sri-production.up.railway.app/
+
+---
+
 ## Tabla de Contenidos
 
 1. [Descripción General](#descripción-general)
@@ -20,8 +24,7 @@
 5. [Algoritmos de Recomendación](#algoritmos-de-recomendación)
 6. [API REST — Endpoints](#api-rest--endpoints)
 7. [Base de Datos](#base-de-datos)
-8. [Instalación y Configuración](#instalación-y-configuración)
-9. [Despliegue en Producción](#despliegue-en-producción)
+8. [Acceso a la Aplicación](#acceso-a-la-aplicación)
 
 ---
 
@@ -367,97 +370,10 @@ Se implementa con programación dinámica en O(m×n). Una palabra se considera c
 
 ---
 
-## Instalación y Configuración
+## Acceso a la Aplicación
 
-### Requisitos previos
+La aplicación está desplegada y disponible en producción. No requiere instalación ni configuración:
 
-- Python 3.12+
-- Una instancia de Supabase (PostgreSQL)
-- Un cluster de MongoDB Atlas
-- (Opcional) Una cuenta en Railway o Render para el deploy
+🔗 **[https://proyecto-sri-production.up.railway.app/](https://proyecto-sri-production.up.railway.app/)**
 
-### Pasos
-
-**1. Clonar e instalar dependencias:**
-
-```bash
-git clone https://github.com/tu-usuario/PROYECTO-SRI.git
-cd PROYECTO-SRI
-pip install -r requirements.txt
-```
-
-**2. Configurar variables de entorno:**
-
-Crea un archivo `.env` en la raíz del proyecto:
-
-```env
-# PostgreSQL — Supabase
-DATABASE_URL=postgresql://user:password@host:6543/postgres
-
-# MongoDB Atlas
-MONGO_URI=mongodb+srv://user:password@cluster.mongodb.net/cinematch
-
-# Flask
-FLASK_SECRET_KEY=tu-clave-secreta-segura
-FLASK_ENV=development          # cambiar a "production" en producción
-FLASK_PORT=5000
-GEO_TIMEOUT_SECONDS=3
-```
-
-**3. Cargar el dataset MovieLens:**
-
-```bash
-python load_movielens.py          # descarga y carga todo
-# Opciones disponibles:
-# --only-movies    → solo películas (sin ratings)
-# --skip-download  → si ya tienes los CSV
-# --limit 500      → prueba rápida con 500 películas
-```
-
-**4. Entrenar el modelo de contenido:**
-
-Una vez cargadas las películas, entrenar el modelo TF-IDF:
-
-```bash
-# Desde la app en ejecución:
-curl -X POST http://localhost:5000/api/admin/fit-model
-```
-
-**5. Ejecutar la aplicación:**
-
-```bash
-python app.py
-# La app estará disponible en http://localhost:5000
-```
-
----
-
-## Despliegue en Producción
-
-El proyecto incluye configuración lista para Railway (`railway.json`, `Procfile`) y Render (`render.yaml`).
-
-**Procfile:**
-
-```
-web: gunicorn app:app --workers 2 --bind 0.0.0.0:$PORT --timeout 120
-release: python load_movielens.py --only-movies --skip-download
-```
-
-**Variables de entorno requeridas en el servidor:**
-
-- `DATABASE_URL`
-- `MONGO_URI`
-- `FLASK_SECRET_KEY`
-- `FLASK_ENV=production`
-
-Tras el primer deploy, llamar al endpoint de entrenamiento para inicializar el modelo de contenido:
-
-```bash
-curl -X POST https://tu-app.railway.app/api/admin/fit-model
-```
-
-Para reentrenar los clusters K-Means después de acumular suficientes usuarios:
-
-```bash
-curl -X POST https://tu-app.railway.app/api/admin/retrain
-```
+Al ingresar por primera vez, el sistema creará automáticamente una sesión anónima, detectará el país desde la IP y mostrará el formulario de cold-start para configurar las preferencias iniciales.
